@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import AdminApp from './admin/AdminApp.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -893,4 +894,8 @@ function Cart({ cart, products, total, onUpdate, onRemove }) {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+const isAdminPage = window.location.pathname.startsWith('/admin');
+
+createRoot(document.getElementById('root')).render(
+  isAdminPage ? <AdminApp /> : <App />
+);
