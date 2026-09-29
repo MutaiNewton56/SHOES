@@ -31,30 +31,31 @@ function App() {
 
   const [messageStatus, setMessageStatus] = React.useState('');
 
-  React.useEffect(() => {
-    async function loadProducts() {
-      try {
-        const res = await fetch(`${API_URL}/api/products`);
-        const data = await res.json();
+  async function loadProducts() {
+  try {
+    const res = await fetch(`${API_URL}/api/products`);
+    const data = await res.json();
 
-        if (!res.ok) {
-          throw new Error(data.message || 'Could not load products.');
-        }
-
-        setProducts(data);
-      } catch (error) {
-        console.error('Product loading error:', error);
-        setProductsError(
-          'Could not load products. Please try again later.'
-        );
-      } finally {
-        setProductsLoading(false);
-      }
+    if (!res.ok) {
+      throw new Error(data.message || 'Could not load products.');
     }
 
-    loadProducts();
-  }, []);
-   function addToCart(product, size) {
+    setProducts(data);
+    setProductsError('');
+  } catch (error) {
+    console.error('Product loading error:', error);
+    setProductsError(
+      'Could not load products. Please try again later.'
+    );
+  } finally {
+    setProductsLoading(false);
+  }
+}
+
+React.useEffect(() => {
+  loadProducts();
+}, []);
+  function addToCart(product, size) {
     setCart((currentCart) => {
       const existing = currentCart.find(
         (item) =>
@@ -185,6 +186,7 @@ function App() {
           data.order.total
         ).toLocaleString()}`
       );
+      await loadProducts();
 
       setCart([]);
 
