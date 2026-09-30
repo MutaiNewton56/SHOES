@@ -1,4 +1,5 @@
 import React from 'react';
+import { useEffect, useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -21,6 +22,10 @@ export default function AdminApp() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [message, setMessage] = React.useState('');
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const [loginForm, setLoginForm] = React.useState({
     email: '',
@@ -30,12 +35,28 @@ export default function AdminApp() {
   const [productForm, setProductForm] = React.useState(emptyProduct);
   const [editingId, setEditingId] = React.useState(null);
   const [showProductForm, setShowProductForm] = React.useState(false);
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
 
   React.useEffect(() => {
     if (token) {
       loadProducts();
     }
   }, [token]);
+
+  useEffect(() => {
+    if (section === 'dashboard') {
+      loadDashboard();
+    }
+
+    if (section === 'orders') {
+      loadOrders();
+    }
+
+    if (section === 'messages') {
+      loadMessages();
+    }
+  }, [section]);
 
   async function login(e) {
     e.preventDefault();
@@ -239,6 +260,100 @@ export default function AdminApp() {
       setError(err.message || 'Could not delete product.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadOrders() {
+    setOrdersLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/orders`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        logout();
+        throw new Error('Your admin session has expired.');
+      }
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Unable to load orders.');
+      }
+
+      setOrders(data);
+    } catch (err) {
+      setError(err.message || 'Unable to load orders.');
+    } finally {
+      setOrdersLoading(false);
+    }
+  }
+
+  async function loadMessages() {
+    setMessagesLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/messages`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        logout();
+        throw new Error('Your admin session has expired.');
+      }
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Unable to load messages.');
+      }
+
+      setMessages(data);
+    } catch (err) {
+      setError(err.message || 'Unable to load messages.');
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function loadDashboard() {
+    setDashboardLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/dashboard`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        logout();
+        throw new Error('Your admin session has expired.');
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          data.message || 'Unable to load dashboard data.'
+        );
+      }
+
+      setDashboard(data);
+    } catch (err) {
+      setError(
+        err.message || 'Unable to load dashboard data.'
+      );
+    } finally {
+      setDashboardLoading(false);
     }
   }
 
@@ -449,11 +564,10 @@ export default function AdminApp() {
           )}
 
           {section === 'dashboard' && (
-            <Dashboard
-              products={products}
-              totalStock={totalStock}
-              inventoryValue={inventoryValue}
-              onProducts={() => setSection('products')}
+            <DashboardSection
+              dashboard={dashboard}
+              loading={dashboardLoading}
+              onReload={loadDashboard}
             />
           )}
 
@@ -474,18 +588,18 @@ export default function AdminApp() {
           )}
 
           {section === 'orders' && (
-            <EmptySection
-              icon="📦"
-              title="Orders"
-              text="Order management will appear here next."
+            <OrdersSection
+              orders={orders}
+              loading={ordersLoading}
+              onReload={loadOrders}
             />
           )}
 
           {section === 'messages' && (
-            <EmptySection
-              icon="💬"
-              title="Messages"
-              text="Customer messages will appear here next."
+            <MessagesSection
+              messages={messages}
+              loading={messagesLoading}
+              onReload={loadMessages}
             />
           )}
         </main>
@@ -977,6 +1091,567 @@ function EmptySection({ icon, title, text }) {
           {text}
         </p>
       </div>
+    </div>
+  );
+}
+
+function OrdersSection({ orders, loading, onReload }) {
+  const [expandedOrder, setExpandedOrder] = useState(null);
+  const [updatingOrder, setUpdatingOrder] = useState(null);
+
+  async function updateOrderStatus(orderId, status) {
+    setUpdatingOrder(orderId);
+
+    try {
+      const token = sessionStorage.getItem('asili_admin_token');
+
+      const res = await fetch(
+        `${API_URL}/api/admin/orders/${orderId}/status`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        throw new Error('Your admin session has expired.');
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          data.message || 'Could not update order status.'
+        );
+      }
+
+      await onReload();
+    } catch (err) {
+      window.alert(
+        err.message || 'Could not update order status.'
+      );
+    } finally {
+      setUpdatingOrder(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+          Management
+        </p>
+
+        <h1 className="mt-2 text-4xl font-black tracking-tight">
+          Orders
+        </h1>
+
+        <div className="mt-8 rounded-3xl border border-neutral-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-neutral-500">
+            Loading orders...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+          Management
+        </p>
+
+        <h1 className="mt-2 text-4xl font-black tracking-tight">
+          Orders
+        </h1>
+
+        <div className="mt-8 rounded-3xl border border-neutral-200 bg-white p-12 text-center shadow-sm">
+          <div className="text-5xl">📦</div>
+
+          <h2 className="mt-5 text-xl font-black">
+            No orders yet
+          </h2>
+
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-neutral-500">
+            Customer orders will appear here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+            Management
+          </p>
+
+          <h1 className="mt-2 text-4xl font-black tracking-tight">
+            Orders
+          </h1>
+
+          <p className="mt-2 text-sm text-neutral-500">
+            {orders.length} order{orders.length === 1 ? '' : 's'}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onReload}
+          className="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-bold transition hover:bg-neutral-50"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="mt-8 space-y-4">
+        {orders.map((order) => {
+          const isExpanded = expandedOrder === order.id;
+
+          return (
+            <div
+              key={order.id}
+              className="overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm"
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedOrder(isExpanded ? null : order.id)
+                }
+                className="w-full p-5 text-left transition hover:bg-neutral-50 sm:p-6"
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="font-black text-neutral-900">
+                      Order #{order.id}
+                    </p>
+
+                    <p className="mt-1 text-sm font-medium text-neutral-700">
+                      {order.customer_name}
+                    </p>
+
+                    <p className="mt-1 text-sm text-neutral-500">
+                      {order.phone}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div>
+                      <p className="font-black text-neutral-900">
+                        KSh {Number(order.total).toLocaleString()}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {new Date(order.created_at).toLocaleString()}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${
+                        order.status === 'pending'
+                          ? 'bg-amber-100 text-amber-800'
+                          : order.status === 'confirmed'
+                            ? 'bg-blue-100 text-blue-800'
+                            : order.status === 'shipped'
+                              ? 'bg-purple-100 text-purple-800'
+                              : order.status === 'delivered'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {order.status}
+                    </span>
+
+                    <span className="text-neutral-400">
+                      {isExpanded ? '▲' : '▼'}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              {isExpanded && (
+                <div className="border-t border-neutral-200 bg-neutral-50 p-5 sm:p-6">
+                  <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-black text-neutral-900">
+                      Order status
+                    </p>
+
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Update the current status of this order.
+                    </p>
+                  </div>
+
+                  <select
+                    value={order.status}
+                    disabled={updatingOrder === order.id}
+                    onChange={(e) =>
+                      updateOrderStatus(order.id, e.target.value)
+                    }
+                    className="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-bold outline-none transition focus:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <div>
+                      <h3 className="font-black text-neutral-900">
+                        Customer details
+                      </h3>
+
+                      <div className="mt-3 space-y-2 text-sm text-neutral-600">
+                        <p>
+                          <span className="font-semibold">
+                            Name:
+                          </span>{' '}
+                          {order.customer_name}
+                        </p>
+
+                        <p>
+                          <span className="font-semibold">
+                            Email:
+                          </span>{' '}
+                          {order.email || 'Not provided'}
+                        </p>
+
+                        <p>
+                          <span className="font-semibold">
+                            Phone:
+                          </span>{' '}
+                          {order.phone}
+                        </p>
+
+                        <p>
+                          <span className="font-semibold">
+                            Address:
+                          </span>{' '}
+                          {order.address}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="font-black text-neutral-900">
+                        Order items
+                      </h3>
+
+                      <div className="mt-3 space-y-2">
+                        {order.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-2xl border border-neutral-200 bg-white p-4"
+                          >
+                            <div className="flex justify-between gap-4">
+                              <div>
+                                <p className="font-bold text-neutral-900">
+                                  {item.product_name}
+                                </p>
+
+                                <p className="mt-1 text-sm text-neutral-500">
+                                  Size {item.size} · Qty {item.quantity}
+                                </p>
+                              </div>
+
+                              <p className="font-bold text-neutral-900">
+                                KSh{' '}
+                                {(
+                                  Number(item.price) *
+                                  item.quantity
+                                ).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex justify-between border-t border-neutral-200 pt-4">
+                        <span className="font-black">
+                          Total
+                        </span>
+
+                        <span className="font-black">
+                          KSh {Number(order.total).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MessagesSection({ messages, loading, onReload }) {
+  if (loading) {
+    return (
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+          Management
+        </p>
+
+        <h1 className="mt-2 text-4xl font-black tracking-tight">
+          Messages
+        </h1>
+
+        <div className="mt-8 rounded-3xl border border-neutral-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-neutral-500">
+            Loading messages...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+            Management
+          </p>
+
+          <h1 className="mt-2 text-4xl font-black tracking-tight">
+            Messages
+          </h1>
+
+          <p className="mt-2 text-sm text-neutral-500">
+            {messages.length} message{messages.length === 1 ? '' : 's'}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onReload}
+          className="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-bold transition hover:bg-neutral-50"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {messages.length === 0 ? (
+        <div className="mt-8 rounded-3xl border border-neutral-200 bg-white p-12 text-center shadow-sm">
+          <div className="text-5xl">💬</div>
+
+          <h2 className="mt-5 text-xl font-black">
+            No messages yet
+          </h2>
+
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-neutral-500">
+            Customer messages will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-8 space-y-4">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6"
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="font-black text-neutral-900">
+                    {message.name}
+                  </h2>
+
+                  <p className="mt-1 text-sm text-neutral-500">
+                    {message.email}
+                  </p>
+                </div>
+
+                <p className="text-xs text-neutral-400">
+                  {new Date(message.created_at).toLocaleString()}
+                </p>
+              </div>
+
+              <div className="mt-5 rounded-2xl bg-neutral-50 p-4">
+                <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-700">
+                  {message.message}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function DashboardSection({ dashboard, loading, onReload }) {
+  if (loading || !dashboard) {
+    return (
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+          Overview
+        </p>
+
+        <h1 className="mt-2 text-4xl font-black tracking-tight">
+          Dashboard
+        </h1>
+
+        <div className="mt-8 rounded-3xl border border-neutral-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-neutral-500">
+            Loading dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const { stats, recentOrders } = dashboard;
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
+            Overview
+          </p>
+
+          <h1 className="mt-2 text-4xl font-black tracking-tight">
+            Dashboard
+          </h1>
+
+          <p className="mt-2 text-sm text-neutral-500">
+            Overview of your Asili Kicks store.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onReload}
+          className="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-bold transition hover:bg-neutral-50"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <DashboardCard
+          icon="🛍️"
+          label="Products"
+          value={stats.totalProducts}
+        />
+
+        <DashboardCard
+          icon="📦"
+          label="Total Orders"
+          value={stats.totalOrders}
+        />
+
+        <DashboardCard
+          icon="⏳"
+          label="Pending Orders"
+          value={stats.pendingOrders}
+        />
+
+        <DashboardCard
+          icon="💬"
+          label="Messages"
+          value={stats.totalMessages}
+        />
+      </div>
+
+      <div className="mt-4 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-bold text-neutral-500">
+          Total Sales
+        </p>
+
+        <p className="mt-2 text-3xl font-black tracking-tight">
+          KSh {Number(stats.totalSales).toLocaleString()}
+        </p>
+
+        <p className="mt-1 text-xs text-neutral-500">
+          Cancelled orders are excluded.
+        </p>
+      </div>
+
+      <div className="mt-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight">
+              Recent Orders
+            </h2>
+
+            <p className="mt-1 text-sm text-neutral-500">
+              Your five most recent customer orders.
+            </p>
+          </div>
+        </div>
+
+        {recentOrders.length === 0 ? (
+          <div className="mt-5 rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-sm text-neutral-500">
+              No orders yet.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-3">
+            {recentOrders.map((order) => (
+              <div
+                key={order.id}
+                className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-black text-neutral-900">
+                    Order #{order.id}
+                  </p>
+
+                  <p className="mt-1 text-sm text-neutral-600">
+                    {order.customer_name}
+                  </p>
+
+                  <p className="mt-1 text-xs text-neutral-400">
+                    {new Date(order.created_at).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="font-black">
+                    KSh {Number(order.total).toLocaleString()}
+                  </span>
+
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold capitalize">
+                    {order.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DashboardCard({ icon, label, value }) {
+  return (
+    <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <div className="text-3xl">{icon}</div>
+
+      <p className="mt-5 text-sm font-bold text-neutral-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-3xl font-black tracking-tight">
+        {Number(value).toLocaleString()}
+      </p>
     </div>
   );
 }
