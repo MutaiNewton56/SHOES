@@ -805,6 +805,69 @@ function ProductsSection({
   onSubmit,
   onCancel,
 }) {
+  const [uploadingImage, setUploadingImage] = React.useState(false);
+
+  async function onImageSelect(e) {
+    const file = e.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      window.alert('Please select an image file.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert('Image must be 5 MB or smaller.');
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      const token = sessionStorage.getItem('asili_admin_token');
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch(
+        `${API_URL}/api/admin/products/upload-image`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        throw new Error('Your admin session has expired.');
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          data.message || 'Unable to upload image.'
+        );
+      }
+
+      onChange({
+        ...productForm,
+        image: data.url,
+      });
+    } catch (err) {
+      window.alert(
+        err.message || 'Unable to upload image.'
+      );
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
   return (
     <>
       <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -898,18 +961,44 @@ function ProductsSection({
             </div>
 
             <div className="sm:col-span-2">
-              <Field
-                label="Image URL"
-                value={productForm.image}
-                onChange={(value) =>
-                  onChange({ ...productForm, image: value })
-                }
-                placeholder="https://..."
-              />
+              <label className="block text-sm font-medium text-neutral-700">
+                Product Image
+              </label>
 
-              <p className="mt-2 text-xs text-neutral-400">
-                Image uploading will be connected to Supabase Storage next.
-              </p>
+              <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-start">
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={onImageSelect}
+                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none file:mr-4 file:rounded-lg file:border-0 file:bg-neutral-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-800"
+                  />
+
+                  <p className="mt-2 text-xs text-neutral-400">
+                    Choose an image up to 5 MB.
+                  </p>
+
+                  {uploadingImage && (
+                    <p className="mt-2 text-sm text-neutral-600">
+                      Uploading image...
+                    </p>
+                  )}
+
+                  {productForm.image && (
+                    <p className="mt-2 break-all text-xs text-neutral-400">
+                      Image uploaded successfully.
+                    </p>
+                  )}
+                </div>
+
+                {productForm.image && (
+                  <img
+                    src={productForm.image}
+                    alt="Product preview"
+                    className="h-28 w-28 rounded-xl border border-neutral-200 object-cover"
+                  />
+                )}
+              </div>
             </div>
 
             <Field
